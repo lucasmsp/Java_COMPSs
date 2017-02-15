@@ -5,53 +5,42 @@ import java.util.StringTokenizer;
 
 public class SVM {
 
-    public SVM (){
 
-    }
+    public double[] Train(double[][][] X, double[][] y,int numDim, int sizeTrain,int sizeTrainPerFrag,
+                                 int numFrag,  double lambda, double threshold, double lr, int maxIters){
 
-    public static void  calc_cost(double[] ypp, double[][] X, double[] label, double[] wp,double [] COST, int numDim ){
-        //double [] COST = new double[1];
-
-        for(int m=0;m<X.length;m++){
-            //yp[m]=0;
-            for(int d=0;d<numDim;d++)
-                ypp[m] += X[m][d] * wp[d];
-
-            if(label[m]*ypp[m]-1<0)
-                COST[0] += (1-label[m]*ypp[m]);
-
-        }
-    }
-
-    public static double accumulate(double[][] COST,  int numFrag,int numDim, double[] w, double lambda){
-        double cost = 0;
-        for (int f=0;f<numFrag;f++)
-            cost += COST[f][0];
-
-
-        //Serial
-        for(int d=0;d<numDim;d++)
-            cost += 0.5*lambda*w[d]*w[d];
-        
-        return cost; // to prevent any aliasing with the task parameters
-    }
-
-    public double CostAndGrad(double[][][] X, double[][] y,double[] w, double[] grad,
-                              double[][]  yp, int numDim, int sizeTrainPerFrag,int numFrag,double lambda){
-
-        double cost =0;
-        double [][] COST = new double[numFrag][1];
-
-        //Parallel
-        for (int f=0;f<numFrag;f++) {
-            calc_cost(yp[f], X[f], y[f], w, COST[f], numDim);
+        if(sizeTrain <=0){
+            System.out.println("num of example <=0!");
+            return null;
         }
 
-        //Syncronization
-        cost =  accumulate(COST,numFrag,numDim,w,lambda);
+        double[] grad = new double[numDim];
+        double   cost = 0;
+        double[] w =  new double[numDim];
+
+        for(int iter=0;iter<maxIters;iter++){
+            double[][] yp = new double[numFrag][sizeTrainPerFrag];
+
+            for (int f=0;f<numFrag;f++)
+                yp[f] = calc_cost( X[f], y[f], w, numDim);
 
 
-        //Paralelizavel
+            calc_grad(sizeTrainPerFrag,  numDim,  lambda,  numFrag, w, yp, grad, X, y);
+            cost = calc_cost2( numFrag, sizeTrainPerFrag, numDim,  w,  y,  yp, lambda);
+
+            System.out.println("[INFO] - Current cost: "+cost);
+            if(cost< threshold){
+                break;
+            }
+            update(w,grad,lr, numDim);
+        }
+
+        return w;
+    }
+
+    public static void calc_grad(int sizeTrainPerFrag, int numDim, double lambda, double numFrag,
+                                   double[] w, double [][] yp, double[] grad,double[][][] X,double[][] y){
+
         for(int d=0;d<numDim;d++){
             grad[d] = Math.abs(lambda*w[d]);
             for (int f=0;f<numFrag;f++)
@@ -59,41 +48,80 @@ public class SVM {
                     if(y[f][m]*yp[f][m]-1<0)
                         grad[d]-= y[f][m]*X[f][m][d];
         }
-
-
-
-        return cost;
     }
 
-    public void update(double[] w,double[] grad, double lr,int numDim){
+
+
+    public static double[]  calc_cost( double[][] X, double[] label, double[] wp, int numDim ){
+        //double [] COST = new double[1];
+        double[] ypp = new double[X.length];
+
+        for(int m=0;m<X.length;m++){
+            //yp[m]=0;
+            for(int d=0;d<numDim;d++)
+                ypp[m] += X[m][d] * wp[d];
+        }
+        return ypp;
+    }
+
+    public static double calc_cost2(int numFrag, int sizeTrainPerFrag, int numDim, double[] w,
+                                    double[][] label, double [][] yp, double lambda){
+        double cost = 0;
+
+        for (int f=0;f<numFrag;f++)
+            for(int m=0;m<sizeTrainPerFrag;m++) {
+                if (label[f][m] * yp[f][m] - 1 < 0)
+                    cost += (1 - label[f][m] * yp[f][m]);
+            }
+
+        //Serial
+        for(int d=0;d<numDim;d++)
+            cost += 0.5*lambda*w[d]*w[d];
+
+        return cost;
+
+    }
+
+    public static void update(double[] w, double[] grad, double lr,int numDim){
         for(int d=0;d<numDim;d++){
             w[d] -= lr*grad[d];
         }
     }
 
-    public void Train(double[][][] X,double[][] y,int numDim, int sizeTrain,int sizeTrainPerFrag,
-                      int numFrag,  double lambda, double threshold, double lr, int maxIters){
 
-        if(sizeTrain <=0){
-            System.out.println("num of example <=0!");
-            return;
-        }
 
-        double[] grad = new double[numDim];
-        double[][] yp = new double[numFrag][sizeTrainPerFrag];
-        double[]    w = new double[numDim];
-        double   cost = 0;
+    public static void Test(int sizeTestPerFrag,int numDim,int numFrag,
+                            int sizeTest, double[][][] testX, double[][] testY, double[] w){
+        int error=0;
+        double[][] labels_result = new double[numFrag][sizeTest];
 
-        for(int iter=0;iter<maxIters;iter++){
-            cost = CostAndGrad(X,y,w,grad,yp,numDim, sizeTrainPerFrag, numFrag,lambda);
-            System.out.println("cost:"+cost);
-            if(cost< threshold){
-                break;
+        //Parallel
+        for (int f =0; f<numFrag;f++)
+            labels_result[f] = predict_chunck(testX[f], testY[f], w, sizeTestPerFrag);
+
+        //Evaluate
+        for (int f =0; f<numFrag;f++)
+            for(int i=0;i<sizeTestPerFrag;i++)	{
+                if(labels_result[f][i]!=testY[f][i])
+                    error++;
             }
-            update(w,grad,lr, numDim);
-        }
+
+        System.out.println("Total Length:"+testX.length);
+        System.out.println("Error:"+error);
+        System.out.println("Error rate:"+((double)error/testX.length));
+        System.out.println("Acc rate:"+((double)(testX.length-error)/testX.length));
     }
-    private double predict(double[] x,double[] w){
+
+    public static double[] predict_chunck(double[][] testX, double[] testY, double[] w,  int sizeTestPerFrag){
+        double[] label_result = new  double[sizeTestPerFrag];
+        for(int i=0;i<sizeTestPerFrag;i++)	{
+            label_result[i] = predict(testX[i], w);
+        }
+
+        return label_result;
+    }
+
+    public static double predict(double[] x, double[] w){
         double pre=0;
         for(int j=0;j<x.length;j++){
             pre+=x[j]*w[j];
@@ -102,22 +130,6 @@ public class SVM {
             return  1.0;
         else return 0.0;
     }
-
-    public void Test(double[][] testX,double[] testY,double[] w){
-        int error=0;
-
-        //Paralelizavel
-        for(int i=0;i<testX.length;i++)	{
-            if(predict(testX[i],w) != testY[i]){
-                error++;
-            }
-        }
-        System.out.println("total:"+testX.length);
-        System.out.println("error:"+error);
-        System.out.println("error rate:"+((double)error/testX.length));
-        System.out.println("acc rate:"+((double)(testX.length-error)/testX.length));
-    }
-
 
     /*
     public static void loadfile(double[][] features, double[] labels, String trainFile) throws IOException {
@@ -147,7 +159,7 @@ public class SVM {
     }
 */
 
-    public static void loadfile_and_split(double[][][] features, double[][] labels, String trainFile,int numFrag,int sizeTrainPerFrag) {
+    public static void loadfile_and_split(double[][][] features, double[][] labels, String trainFile,int numFrag, int sizeTrainPerFrag) {
 
         //labels = new double[numFrag][sizeTrainPerFrag];
         //features = new double[numFrag][sizeTrainPerFrag][28];//HARD
@@ -211,7 +223,7 @@ public class SVM {
 
         int numDim = 28;
         int sizeTrain = 1000;
-        int sizeTest  = 10000;
+        int sizeTest  = 1000;
         int numFrag = 4;
 
         int sizeTrainPerFrag = (int) Math.floor((float)sizeTrain/numFrag);
@@ -228,16 +240,19 @@ public class SVM {
         double lambda = 0.0001;
         double lr = 0.001;
         double threshold = 0.001;
+        double[]    w = svm.Train(train_features,train_labels,numDim,sizeTrain,
+                                  sizeTrainPerFrag,numFrag,lambda,threshold,lr,3);
 
-        svm.Train(train_features,train_labels,numDim,sizeTrain,sizeTrainPerFrag,numFrag,lambda,threshold,lr,3);
- /*
-        double[] test_y = new double[sizeTest];
-        double[][] test_X = new double[sizeTest][numDim];
-        String testFile = "/media/lucasmsp/Dados/TEMP/Dataset/higgs-train-0.01m.csv";
-        loadfile(test_X,test_y,testFile);
 
-        svm.Test(test_X, test_y);
-*/
+        int sizeTestPerFrag = (int) Math.floor((float)sizeTest/numFrag);
+        double[][] test_labels = new double[sizeTest][sizeTestPerFrag];
+        double[][][] test_features = new double[sizeTest][sizeTestPerFrag][numDim];
+        String testFile = "/media/lucasmsp/Dados/TEMP/Dataset/higgs-train-0.001m.csv";
+
+        loadfile_and_split(test_features,test_labels,testFile,numFrag,sizeTestPerFrag);
+
+        svm.Test(sizeTestPerFrag,numDim,numFrag,sizeTest,test_features, test_labels,w);
+
     }
 
 }

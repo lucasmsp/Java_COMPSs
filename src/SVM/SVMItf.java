@@ -11,34 +11,71 @@ import integratedtoolkit.types.annotations.task.Method;
  */
 public interface SVMItf {
 
-    @Method(declaringClass = "SVM.SVM")
-    void calc_cost(
-            @Parameter(direction = Parameter.Direction.INOUT)
-                    double[] yp,
-            @Parameter(direction = Parameter.Direction.IN)
+    @Method(declaringClass = "SVM.SVM", isModifier=true, priority=true)
+    double[] calc_cost(
+            @Parameter(type = Parameter.Type.OBJECT,  direction = Parameter.Direction.IN)
                     double[][] X,
-            @Parameter(direction = Parameter.Direction.IN)
+            @Parameter(type = Parameter.Type.OBJECT, direction = Parameter.Direction.IN)
                     double[] y,
             @Parameter(direction = Parameter.Direction.IN)
                     double[] w,
-            @Parameter(direction = Parameter.Direction.INOUT)
-                    double[] COST,
             @Parameter(direction = Parameter.Direction.IN)
                     int numDim
     );
 
+    @Method(declaringClass = "SVM.SVM")
+    double[] predict_chunck(
+            @Parameter(type = Parameter.Type.OBJECT,  direction = Parameter.Direction.IN) double[][] testX,
+            @Parameter(type = Parameter.Type.OBJECT,  direction = Parameter.Direction.IN) double[] testY,
+            @Parameter(type = Parameter.Type.OBJECT,  direction = Parameter.Direction.IN) double[] w,
+            @Parameter(direction = Parameter.Direction.IN) int sizeTestPerFrag
+    );
+
+
+/*
+
+
+       @Method(declaringClass = "SVM.SVM")
+    double predict(
+            @Parameter(type = Parameter.Type.OBJECT, direction = Parameter.Direction.IN) double[] x,
+            @Parameter(type = Parameter.Type.OBJECT, direction = Parameter.Direction.IN) double[] w
+
+    );
 
     @Method(declaringClass = "SVM.SVM")
-    double accumulate(
-            @Parameter(direction = Parameter.Direction.IN)
-                    double[][] COST,
-            @Parameter(direction = Parameter.Direction.IN)
-                    int numFrag,
-            @Parameter(direction = Parameter.Direction.IN)
-                    int numDim,
-            @Parameter(direction = Parameter.Direction.IN)
-                    double[] w
+    double calc_cost2(
+            @Parameter(direction = Parameter.Direction.IN) int numFrag,
+            @Parameter(direction = Parameter.Direction.IN) int sizeTrainPerFrag,
+            @Parameter(direction = Parameter.Direction.IN) int numDim,
+            @Parameter(direction = Parameter.Direction.IN) double[] w,
+            @Parameter(direction = Parameter.Direction.IN) double[][] label,
+            @Parameter(direction = Parameter.Direction.IN) double [][] yp,
+            @Parameter(direction = Parameter.Direction.IN) double lambda
     );
+
+
+
+    @Method(declaringClass = "SVM.SVM")
+    void calc_grad(
+            @Parameter(direction = Parameter.Direction.IN) int sizeTrainPerFrag,
+            @Parameter(direction = Parameter.Direction.IN) int numDim,
+            @Parameter(direction = Parameter.Direction.IN) double lambda,
+            @Parameter(direction = Parameter.Direction.IN) double numFrag,
+            @Parameter(direction = Parameter.Direction.IN) double[] w,
+            @Parameter(direction = Parameter.Direction.IN) double [][] yp,
+            @Parameter(direction = Parameter.Direction.INOUT) double[] grad,
+            @Parameter(direction = Parameter.Direction.IN) double[][][] X,
+            @Parameter(direction = Parameter.Direction.IN) double[][] y
+    );
+
+
+
+
+
+
+
+
+
 /*
 
     @Method(declaringClass = "SVM.SVM")
@@ -55,6 +92,8 @@ public interface SVMItf {
                 int sizeTrainPerFrag
     );
 */
+
+
 
 
 
