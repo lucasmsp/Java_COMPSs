@@ -5,46 +5,39 @@ import java.util.StringTokenizer;
 
 public class SVM {
 
+    public SVM (){
 
-
-
-    public static double lambda;
-    public static double lr = 0.001;
-    public static double threshold = 0.001;
-
-
-    public SVM (double paramLambda){
-        lambda = paramLambda;
     }
 
-    public static void  calc_cost(double[] yp, double[][] X, double[] y, double[] w,double [] COST, int numDim ){
+    public static void  calc_cost(double[] ypp, double[][] X, double[] label, double[] wp,double [] COST, int numDim ){
         //double [] COST = new double[1];
 
         for(int m=0;m<X.length;m++){
             //yp[m]=0;
             for(int d=0;d<numDim;d++)
-                yp[m] += X[m][d] * w[d];
+                ypp[m] += X[m][d] * wp[d];
 
-            if(y[m]*yp[m]-1<0)
-                COST[0] += (1-y[m]*yp[m]);
+            if(label[m]*ypp[m]-1<0)
+                COST[0] += (1-label[m]*ypp[m]);
 
         }
     }
 
-    public static double accumulate(double[][] COST,  int numFrag,int numDim, double[] w){
+    public static double accumulate(double[][] COST,  int numFrag,int numDim, double[] w, double lambda){
         double cost = 0;
-        for (int f=1;f<numFrag;f++)
-            cost+= COST[f][0];
+        for (int f=0;f<numFrag;f++)
+            cost += COST[f][0];
+
 
         //Serial
         for(int d=0;d<numDim;d++)
             cost += 0.5*lambda*w[d]*w[d];
-
+        
         return cost; // to prevent any aliasing with the task parameters
     }
 
     public double CostAndGrad(double[][][] X, double[][] y,double[] w, double[] grad,
-                              double[][]  yp, int numDim, int sizeTrainPerFrag,int numFrag){
+                              double[][]  yp, int numDim, int sizeTrainPerFrag,int numFrag,double lambda){
 
         double cost =0;
         double [][] COST = new double[numFrag][1];
@@ -55,7 +48,7 @@ public class SVM {
         }
 
         //Syncronization
-        cost =  accumulate(COST,numFrag,numDim,w);
+        cost =  accumulate(COST,numFrag,numDim,w,lambda);
 
 
         //Paralelizavel
@@ -72,13 +65,14 @@ public class SVM {
         return cost;
     }
 
-    public void update(double[] w,double[] grad,int numDim){
+    public void update(double[] w,double[] grad, double lr,int numDim){
         for(int d=0;d<numDim;d++){
             w[d] -= lr*grad[d];
         }
     }
 
-    public void Train(double[][][] X,double[][] y,int numDim, int sizeTrain,int sizeTrainPerFrag, int numFrag, int maxIters){
+    public void Train(double[][][] X,double[][] y,int numDim, int sizeTrain,int sizeTrainPerFrag,
+                      int numFrag,  double lambda, double threshold, double lr, int maxIters){
 
         if(sizeTrain <=0){
             System.out.println("num of example <=0!");
@@ -91,12 +85,12 @@ public class SVM {
         double   cost = 0;
 
         for(int iter=0;iter<maxIters;iter++){
-            cost = CostAndGrad(X,y,w,grad,yp,numDim, sizeTrainPerFrag,numFrag);
+            cost = CostAndGrad(X,y,w,grad,yp,numDim, sizeTrainPerFrag, numFrag,lambda);
             System.out.println("cost:"+cost);
             if(cost< threshold){
                 break;
             }
-            update(w,grad,numDim);
+            update(w,grad,lr, numDim);
         }
     }
     private double predict(double[] x,double[] w){
@@ -229,9 +223,13 @@ public class SVM {
         loadfile_and_split(train_features,train_labels,trainFile, numFrag, sizeTrainPerFrag);
 
 
-        SVM svm = new SVM(0.0001);
+        SVM svm = new SVM();
 
-        svm.Train(train_features,train_labels,numDim,sizeTrain,sizeTrainPerFrag,numFrag,3);
+        double lambda = 0.0001;
+        double lr = 0.001;
+        double threshold = 0.001;
+
+        svm.Train(train_features,train_labels,numDim,sizeTrain,sizeTrainPerFrag,numFrag,lambda,threshold,lr,3);
  /*
         double[] test_y = new double[sizeTest];
         double[][] test_X = new double[sizeTest][numDim];
